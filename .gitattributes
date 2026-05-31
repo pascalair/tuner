@@ -1,0 +1,7 @@
+# Normalisation des fins de ligne. gradlew DOIT rester en LF (script exécuté sur Linux en CI).
+* text=auto eol=lf
+*.bat text eol=crlf
+gradlew text eol=lf
+*.jar binary
+*.jpeg binary
+*.png binary

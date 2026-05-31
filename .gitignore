@@ -1,0 +1,19 @@
+# Build
+*.iml
+.gradle/
+build/
+local.properties
+.cxx/
+
+# Android Studio / IntelliJ
+.idea/
+captures/
+*.hprof
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Réglages locaux Claude Code et capture de référence (ne pas publier)
+.claude/
+image_guitaretuna.jpeg

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tuner</string>
+    <string name="mic_permission_message">L\'accordeur a besoin du micro pour entendre les cordes.</string>
+    <string name="mic_permission_button">Autoriser le micro</string>
+</resources>
