@@ -18,7 +18,7 @@ class AudioEngine(private val onPitch: (Float) -> Unit) {
         const val SAMPLE_RATE = 44100
         const val WINDOW_SIZE = 4096          // fenêtre d'analyse
         const val HOP = 2048                  // nouveaux échantillons entre deux analyses
-        private const val SILENCE_RMS = 0.012 // sous ce niveau, on considère qu'il n'y a pas de son
+        private const val SILENCE_RMS = 0.006 // sous ce niveau, on considère qu'il n'y a pas de son
     }
 
     private val detector = PitchDetector(SAMPLE_RATE, WINDOW_SIZE)
