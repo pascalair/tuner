@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -76,8 +74,8 @@ private fun TunerContent(controller: TunerController) {
 
         Spacer(Modifier.weight(1f))
         NoteDisplay(state)
-        Spacer(Modifier.height(24.dp))
-        GaugeBar(state)
+        Spacer(Modifier.height(20.dp))
+        PitchIndicator(state)
         Spacer(Modifier.weight(1f))
 
         StringRow(state) { controller.toggleString(it) }
@@ -147,12 +145,12 @@ private fun NoteDisplay(state: TunerState) {
 }
 
 @Composable
-private fun GaugeBar(state: TunerState) {
+private fun PitchIndicator(state: TunerState) {
     val targetCents = if (state.hasSignal)
         state.cents.coerceIn(-CENTS_SCALE, CENTS_SCALE) else 0f
     val animated by animateFloatAsState(
         targetValue = targetCents,
-        animationSpec = tween(durationMillis = 110),
+        animationSpec = tween(durationMillis = 90),
         label = "centsPointer",
     )
     val dotColor = when {
@@ -160,21 +158,23 @@ private fun GaugeBar(state: TunerState) {
         state.inTune -> Green
         else -> TextPrimary
     }
+    val history = state.history
 
     Column(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("♭", color = TextDim, fontSize = 22.sp)
             Text("♯", color = TextDim, fontSize = 22.sp)
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         Canvas(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(90.dp)
+                .height(190.dp)
         ) {
             val cx = size.width / 2f
-            val midY = size.height / 2f
             val half = size.width * 0.46f
+            val gaugeY = 24f
+            fun xForCents(c: Float) = cx + (c.coerceIn(-CENTS_SCALE, CENTS_SCALE) / CENTS_SCALE) * half
 
             // Graduations : centre (haute) et repères à ±25, ±50.
             listOf(-1f, -0.5f, 0f, 0.5f, 1f).forEach { frac ->
@@ -182,15 +182,35 @@ private fun GaugeBar(state: TunerState) {
                 val tall = frac == 0f
                 drawLine(
                     color = if (tall) TextDim else TextDim.copy(alpha = 0.4f),
-                    start = Offset(x, midY - if (tall) 26f else 14f),
-                    end = Offset(x, midY + if (tall) 26f else 14f),
+                    start = Offset(x, gaugeY - if (tall) 16f else 9f),
+                    end = Offset(x, gaugeY + if (tall) 16f else 9f),
                     strokeWidth = if (tall) 5f else 3f,
                 )
             }
 
-            // Point mobile : sa position suit l'écart en cents, l'animation rend la vitesse visible.
-            val dotX = cx + (animated / CENTS_SCALE) * half
-            drawCircle(color = dotColor, radius = 26f, center = Offset(dotX, midY))
+            // Tracé défilant : historique des dernières secondes, du plus récent (haut)
+            // au plus ancien (bas), qui s'efface en descendant.
+            val traceTop = gaugeY + 34f
+            val traceBottom = size.height
+            val span = (HISTORY_SIZE - 1).coerceAtLeast(1)
+            val n = history.size
+            var prev: Offset? = null
+            for (i in 0 until n) {
+                val value = history[i]
+                val age = n - 1 - i // 0 = mesure la plus récente
+                if (value.isNaN()) {
+                    prev = null
+                    continue
+                }
+                val y = traceTop + (age.toFloat() / span) * (traceBottom - traceTop)
+                val point = Offset(xForCents(value), y)
+                val alpha = (1f - age.toFloat() / span).coerceIn(0.05f, 1f)
+                prev?.let { drawLine(Green.copy(alpha = alpha), it, point, strokeWidth = 4f) }
+                prev = point
+            }
+
+            // Point courant, par-dessus le reste.
+            drawCircle(color = dotColor, radius = 22f, center = Offset(xForCents(animated), gaugeY))
         }
     }
 }
