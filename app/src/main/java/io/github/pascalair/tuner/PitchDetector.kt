@@ -82,6 +82,6 @@ class PitchDetector(
         val s2 = yin[x2]
         val denom = 2 * (2 * s1 - s2 - s0)
         if (denom == 0f) return tau.toDouble()
-        return tau + (s2 - s0) / denom
+        return tau.toDouble() + (s2 - s0) / denom
     }
 }
