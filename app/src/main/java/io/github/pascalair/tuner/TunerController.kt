@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlin.math.abs
 import kotlin.math.ceil
+import kotlin.math.log2
 
 /** Tolérance pour considérer une corde "juste" (en cents, de part et d'autre). */
 const val IN_TUNE_CENTS = 5f
@@ -61,6 +62,8 @@ class TunerController {
         const val IN_TUNE_HOLD_MS = 500      // durée juste avant le son
         const val REARM_CENTS = 15f          // au-delà, on ré-autorise le son sur la même corde
         const val JUMP_LIMIT_CENTS = 90f     // au-delà, une mesure est jugée suspecte
+        const val HARMONIC_PENALTY = 15f     // pénalité par octave pour préférer la fondamentale
+        val HARMONICS = intArrayOf(1, 2, 3)  // rangs d'harmoniques envisagés (corrige l'octave)
         const val ACQUIRE_FRAMES = 2         // mesures cohérentes pour afficher une nouvelle note
         const val RELOCK_FRAMES = 3          // mesures cohérentes pour confirmer un changement de note
         const val GRACE_MS = 650             // on garde la note affichée pendant ce délai sans signal
@@ -94,40 +97,78 @@ class TunerController {
             return
         }
 
+        // On replie la mesure sur sa fondamentale probable (corrige les sauts d'octave) :
+        // toute la logique de suivi travaille ensuite sur cette fondamentale.
+        val fund = impliedFundamental(rawFreq)
+
         if (lockedFreq <= 0f) {
             // Aucune note suivie : on exige quelques mesures cohérentes avant d'afficher,
             // pour ne pas réagir à un bruit ou au tout début d'une attaque.
-            if (isCandidateClose(rawFreq)) candidateFrames++ else startCandidate(rawFreq)
+            if (isCandidateClose(fund)) candidateFrames++ else startCandidate(fund)
             if (candidateFrames >= ACQUIRE_FRAMES) {
-                lockTo(rawFreq)
-                accept(rawFreq)
+                lockTo(fund)
+                accept(fund)
             } else {
                 idle()
             }
             return
         }
 
-        val jump = centsApart(rawFreq, lockedFreq)
+        val jump = centsApart(fund, lockedFreq)
         if (jump <= JUMP_LIMIT_CENTS) {
             candidateFrames = 0
-            accept(rawFreq)
+            accept(fund)
         } else {
             // Mesure éloignée : parasite isolé, ou vrai changement de corde s'il se confirme.
-            if (isCandidateClose(rawFreq)) candidateFrames++ else startCandidate(rawFreq)
+            if (isCandidateClose(fund)) candidateFrames++ else startCandidate(fund)
             if (candidateFrames >= RELOCK_FRAMES) {
-                lockTo(rawFreq)
-                accept(rawFreq)
+                lockTo(fund)
+                accept(fund)
             } else {
                 onMiss() // on tient la note précédente le temps de trancher
             }
         }
     }
 
-    /** Mesure retenue : met à jour la note suivie, l'écart lissé, le son et le tracé. */
-    private fun accept(rawFreq: Float) {
+    /**
+     * Replie une fréquence détectée sur la fondamentale de corde la plus plausible.
+     * En auto, on cherche la (corde, harmonique) qui explique le mieux la mesure, en
+     * préférant la fondamentale ; en forcé, on replie sur l'octave de la corde imposée.
+     * Corrige le cas où le micro entend une harmonique (ex. 164 Hz = 2ᵉ harm. de E2).
+     */
+    private fun impliedFundamental(detected: Float): Float {
+        val strings = state.instrument.strings
+        state.forcedString?.let { i ->
+            return foldToOctave(detected, strings[i].frequency)
+        }
+        var bestFund = detected
+        var bestScore = Float.MAX_VALUE
+        for (s in strings) {
+            for (r in HARMONICS) {
+                val err = abs(centsBetween(detected.toDouble(), s.frequency * r)).toFloat()
+                val score = err + HARMONIC_PENALTY * log2(r.toFloat())
+                if (score < bestScore) {
+                    bestScore = score
+                    bestFund = detected / r
+                }
+            }
+        }
+        return bestFund
+    }
+
+    /** Ramène [f] dans l'octave de [ref] (en multipliant/divisant par 2). */
+    private fun foldToOctave(f: Float, ref: Double): Float {
+        var x = f
+        while (x > ref * 1.5f) x /= 2f
+        while (x < ref / 1.5f) x *= 2f
+        return x
+    }
+
+    /** Mesure retenue (fondamentale) : met à jour la note suivie, l'écart lissé, le son et le tracé. */
+    private fun accept(fundamental: Float) {
         lostFrames = 0
 
-        recentFreqs.addLast(rawFreq)
+        recentFreqs.addLast(fundamental)
         while (recentFreqs.size > MEDIAN_WINDOW) recentFreqs.removeFirst()
         val freq = median(recentFreqs)
         lockedFreq = freq
